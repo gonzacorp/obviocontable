@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
   Bell,
@@ -76,9 +77,9 @@ export default function Page() {
       <div className="brand"><div className="brand-mark">O</div>{sidebarOpen && <><span className="brand-name">OBVIO</span><span className="brand-dot" /></>}</div>
       <nav className="side-nav" aria-label="Navegación principal">
         <p className="nav-caption">Workspace</p>
-        <button className="nav-item active"><LayoutDashboard size={18} /><span>Resumen</span></button>
+        <Link href="/" className="nav-item active"><LayoutDashboard size={18} /><span>Resumen</span></Link>
         <button className="nav-item"><CalendarDays size={18} /><span>Presentaciones</span><span className="nav-badge">12</span></button>
-        <button className="nav-item"><UsersRound size={18} /><span>Clientes</span></button>
+        <Link href="/clientes" className="nav-item"><UsersRound size={18} /><span>Clientes</span></Link>
         <button className="nav-item"><Clock3 size={18} /><span>Actividad</span></button>
         <p className="nav-caption space-top">Análisis</p>
         <button className="nav-item"><FileCheck2 size={18} /><span>Estadísticas</span></button>
@@ -86,7 +87,10 @@ export default function Page() {
         <p className="nav-caption space-top">Configuración</p>
         <button className="nav-item"><Settings2 size={18} /><span>Preferencias</span></button>
       </nav>
-      <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18} /><div><strong>¿Necesitás ayuda?</strong><span>Visitá el centro de soporte</span></div></div><div className="user-mini"><span className="user-avatar">MS</span>{sidebarOpen && <div><strong>Mariana Soto</strong><span>Contadora de impuestos</span></div>}<MoreHorizontal size={17} /></div></div>
+      <div className="sidebar-bottom">
+        <div className="help-card"><CircleHelp size={18} /><div><strong>¿Necesitás ayuda?</strong><span>Visitá el centro de soporte</span></div></div>
+        <div className="user-mini"><span className="user-avatar">MS</span>{sidebarOpen && <div><strong>Mariana Soto</strong><span>Contadora de impuestos</span></div>}<MoreHorizontal size={17} /></div>
+      </div>
     </aside>
     <section className="main-content">
       <header className="topbar"><button className="icon-button menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Contraer menú"><PanelLeftClose size={19} /></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>Resumen</strong></div><div className="top-actions"><button className="icon-button"><Bell size={18} /><i /></button><button className="icon-button"><CircleHelp size={18} /></button><div className="profile-chip"><span className="user-avatar small">MS</span><span>Mariana Soto</span><ChevronDown size={14} /></div></div></header>
