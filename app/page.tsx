@@ -85,7 +85,8 @@ export default function Page() {
   }, [])
 
   const handleSignOut = async () => {
-    await createClient().auth.signOut()
+    // scope: 'global' invalida la sesión en todos los dispositivos donde el usuario haya iniciado sesión, no solo en este navegador
+    await createClient().auth.signOut({ scope: 'global' })
     window.location.href = '/login'
   }
 
