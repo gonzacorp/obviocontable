@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import {
   Bell,
   CalendarDays,
@@ -52,7 +53,6 @@ const clients: Client[] = [
 ]
 
 const stateLabels: Record<CellState, string> = { pending: 'Pendiente', progress: 'En proceso', done: 'Completado', late: 'Vencido', muted: 'No aplica' }
-
 function Avatar({ client }: { client: Client }) {
   return <span className={`avatar avatar-${client.tone}`}>{client.initials}</span>
 }
@@ -63,6 +63,9 @@ function StatCard({ icon, label, value, detail, color }: { icon: React.ReactNode
 
 export default function Page() {
   const [selected, setSelected] = useState<Client | null>(null)
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data }) => { if (!data.user) window.location.replace('/login') })
+  }, [])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('Todos')
   const [sidebarOpen, setSidebarOpen] = useState(true)
