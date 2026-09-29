@@ -2,6 +2,13 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const strayCode = request.nextUrl.searchParams.get('code')
+  if (strayCode && !request.nextUrl.pathname.startsWith('/auth/')) {
+    const callback = new URL('/auth/callback', request.url)
+    callback.searchParams.set('code', strayCode)
+    return NextResponse.redirect(callback)
+  }
+
   let response = NextResponse.next({ request })
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

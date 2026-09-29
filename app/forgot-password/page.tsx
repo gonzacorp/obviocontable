@@ -5,11 +5,11 @@ import Link from 'next/link'
 import { ArrowLeft, ArrowRight, KeyRound, Mail, MailCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
+// Supabase only accepts redirect URLs that exactly match its allow list, so extra query
+// params make it fall back to the Site URL. The recovery intent travels in a cookie instead.
 function recoveryRedirectUrl() {
-  const base = process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`
-  const url = new URL(base)
-  url.searchParams.set('next', '/reset-password')
-  return url.toString()
+  document.cookie = `obvio_recovery=1; path=/; max-age=3600; samesite=none; secure`
+  return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`
 }
 
 export default function ForgotPasswordPage() {
