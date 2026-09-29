@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Bell,
@@ -15,6 +15,7 @@ import {
   Filter,
   LayoutDashboard,
   ListFilter,
+  LogOut,
   MoreHorizontal,
   PanelLeftClose,
   Plus,
@@ -69,6 +70,25 @@ export default function Page() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('Todos')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
+  const sidebarMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) setProfileMenuOpen(false)
+      if (sidebarMenuRef.current && !sidebarMenuRef.current.contains(event.target as Node)) setSidebarMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSignOut = async () => {
+    await createClient().auth.signOut()
+    window.location.href = '/login'
+  }
+
   const filtered = clients.filter((client) => client.name.toLowerCase().includes(search.toLowerCase()) && (filter === 'Todos' || client.owner === filter))
 
   return <main className="app-shell">
@@ -86,10 +106,35 @@ export default function Page() {
         <p className="nav-caption space-top">Configuración</p>
         <button className="nav-item"><Settings2 size={18} /><span>Preferencias</span></button>
       </nav>
-      <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18} /><div><strong>¿Necesitás ayuda?</strong><span>Visitá el centro de soporte</span></div></div><div className="user-mini"><span className="user-avatar">MS</span>{sidebarOpen && <div><strong>Mariana Soto</strong><span>Contadora de impuestos</span></div>}<MoreHorizontal size={17} /></div></div>
+      <div className="sidebar-bottom">
+        <div className="help-card"><CircleHelp size={18} /><div><strong>¿Necesitás ayuda?</strong><span>Visitá el centro de soporte</span></div></div>
+        <div className="user-mini-wrap" ref={sidebarMenuRef}>
+          <button className="user-mini" onClick={() => setSidebarMenuOpen((open) => !open)} aria-haspopup="true" aria-expanded={sidebarMenuOpen}>
+            <span className="user-avatar">MS</span>{sidebarOpen && <div><strong>Mariana Soto</strong><span>Contadora de impuestos</span></div>}<MoreHorizontal size={17} />
+          </button>
+          {sidebarMenuOpen && <div className="account-menu account-menu-up" role="menu">
+            <button className="account-menu-item" role="menuitem" onClick={handleSignOut}><LogOut size={15} /> Cerrar sesión</button>
+          </div>}
+        </div>
+      </div>
     </aside>
     <section className="main-content">
-      <header className="topbar"><button className="icon-button menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Contraer menú"><PanelLeftClose size={19} /></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>Resumen</strong></div><div className="top-actions"><button className="icon-button"><Bell size={18} /><i /></button><button className="icon-button"><CircleHelp size={18} /></button><div className="profile-chip"><span className="user-avatar small">MS</span><span>Mariana Soto</span><ChevronDown size={14} /></div></div></header>
+      <header className="topbar">
+        <button className="icon-button menu-button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Contraer menú"><PanelLeftClose size={19} /></button>
+        <div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>Resumen</strong></div>
+        <div className="top-actions">
+          <button className="icon-button"><Bell size={18} /><i /></button>
+          <button className="icon-button"><CircleHelp size={18} /></button>
+          <div className="profile-chip-wrap" ref={profileMenuRef}>
+            <button className="profile-chip" onClick={() => setProfileMenuOpen((open) => !open)} aria-haspopup="true" aria-expanded={profileMenuOpen}>
+              <span className="user-avatar small">MS</span><span>Mariana Soto</span><ChevronDown size={14} />
+            </button>
+            {profileMenuOpen && <div className="account-menu" role="menu">
+              <button className="account-menu-item" role="menuitem" onClick={handleSignOut}><LogOut size={15} /> Cerrar sesión</button>
+            </div>}
+          </div>
+        </div>
+      </header>
       <div className="content-wrap">
         <div className="page-heading"><div><p className="eyebrow"><Sparkles size={13} /> Mi espacio de trabajo</p><h1>Buen día, Mariana<span>.</span></h1><p className="subtitle">Este es el estado de tus presentaciones para hoy.</p></div><button className="primary-button"><Plus size={17} /> Nueva presentación</button></div>
         <div className="stats-grid"><StatCard icon={<FileCheck2 size={17} />} label="Presentaciones del mes" value="128" detail="+12% vs. mes anterior" color="purple" /><StatCard icon={<Clock3 size={17} />} label="En proceso" value="24" detail="8 requieren atención" color="yellow" /><StatCard icon={<Check size={18} />} label="Completadas" value="89" detail="69.5% del total" color="green" /><StatCard icon={<Bell size={17} />} label="Próximos vencimientos" value="15" detail="En los próximos 7 días" color="red" /></div>
