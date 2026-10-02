@@ -13,7 +13,10 @@ const role = body.role === 'admin' || body.role === 'editor' ? body.role : 'view
 if (!email || !email.includes('@')) return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
 if (!name) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
 const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!)
-const { data: invited, error } = await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: name }, redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${new URL(request.url).origin}/auth/callback` })
+// needs_password marca que esta persona todavía no eligió su propia contraseña: el link de
+// invitación la deja con una sesión activa pero sin clave, así que /auth/callback usa esta
+// bandera para mandarla primero a /reset-password antes de dejarla entrar al panel.
+const { data: invited, error } = await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: name, needs_password: true }, redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${new URL(request.url).origin}/auth/callback` })
 if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 // El rol va en app_metadata (no en user_metadata) porque solo este endpoint, con la service role key,
 // puede escribirlo. user_metadata lo puede editar el propio usuario desde el cliente con
