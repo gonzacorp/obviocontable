@@ -77,6 +77,7 @@ const [invite, setInvite] = useState<InviteForm>(EMPTY_INVITE)
 const [sending, setSending] = useState(false)
 const [formError, setFormError] = useState<string | null>(null)
 const [lastInvited, setLastInvited] = useState<string | null>(null)
+const [inviteWarning, setInviteWarning] = useState<string | null>(null)
 
 async function handleInvite(event: FormEvent) {
 event.preventDefault()
@@ -96,6 +97,7 @@ setSending(false)
 return
 }
 setLastInvited(invite.email.trim())
+setInviteWarning(typeof body.warning === 'string' ? body.warning : null)
 setInvite(EMPTY_INVITE)
 setModalOpen(false)
 } catch {
@@ -175,6 +177,7 @@ return <main className="app-shell">
 {isAdmin && <button className="primary-button" onClick={() => { setInvite(EMPTY_INVITE); setFormError(null); setModalOpen(true) }}><Plus size={17} /> Invitar persona</button>}
 </div>
 {lastInvited && <p className="form-success">Le enviamos una invitación a <strong>{lastInvited}</strong> para que cree su cuenta.</p>}
+{inviteWarning && <p className="form-error">{inviteWarning}</p>}
 {!isAdmin && <p className="drawer-muted" style={{ marginTop: 14 }}>Solo un administrador puede invitar nuevas personas al estudio.</p>}
 </div>
 </div>
