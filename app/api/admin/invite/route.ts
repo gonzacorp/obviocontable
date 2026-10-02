@@ -3,15 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'admin') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
-  const body = await request.json()
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
-  const role = body.role === 'admin' || body.role === 'editor' ? body.role : 'viewer'
-  if (!email || !email.includes('@')) return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
-  const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const { error } = await admin.auth.admin.inviteUserByEmail(email, { data: {}, redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${new URL(request.url).origin}/auth/callback` })
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ ok: true, role })
+const supabase = await createClient()
+const { data: { user } } = await supabase.auth.getUser()
+if (!user || user.app_metadata?.role !== 'admin') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+const body = await request.json()
+const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+const name = typeof body.name === 'string' ? body.name.trim() : ''
+const role = body.role === 'admin' || body.role === 'editor' ? body.role : 'viewer'
+if (!email || !email.includes('@')) return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
+if (!name) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!)
+const { error } = await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: name }, redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${new URL(request.url).origin}/auth/callback` })
+if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+return NextResponse.json({ ok: true, role })
 }
