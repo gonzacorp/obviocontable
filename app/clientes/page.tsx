@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName, getInitials } from '@/lib/account'
+import { esCuitValido, formatearCuit, tipoPersonaDesdeCuit, type TipoPersona } from '@/lib/cuit'
 import {
 Archive,
 Bell,
@@ -31,18 +32,34 @@ type ClientRow = {
 id: string
 name: string
 cuit: string
-type: 'A' | 'B' | 'C'
+person_type: TipoPersona
 owner: string
-exercise: string
+accounting_owner: string | null
+email: string | null
+phone: string | null
+notes: string | null
 archived: boolean
 archived_at: string | null
 created_at: string
 }
 
-type FormState = { name: string; cuit: string; type: 'A' | 'B' | 'C'; owner: string; exercise: string }
+type FormState = {
+name: string
+cuit: string
+owner: string
+accountingOwner: string
+email: string
+phone: string
+notes: string
+}
 
-const EMPTY_FORM: FormState = { name: '', cuit: '', type: 'B', owner: '', exercise: '' }
+const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '' }
 const TONES = ['violet', 'gold', 'blue', 'pink', 'green', 'orange']
+
+// Por ahora todos están en Impuestos; cuando definas el equipo de
+// Contabilidad, agregalo acá.
+const RESPONSABLES_IMPUESTOS = ['Mati L', 'Nico C', 'Nico G']
+const RESPONSABLES_CONTABILIDAD = ['Mati L', 'Nico C', 'Nico G']
 
 function toneForName(name: string) {
 let hash = 0
@@ -62,6 +79,18 @@ return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short
 } catch {
 return iso
 }
+}
+
+function personaLabel(tipo: TipoPersona) {
+if (tipo === 'fisica') return 'Impuestos'
+if (tipo === 'juridica') return 'Impuestos + Contabilidad'
+return 'Revisar'
+}
+
+function personaStyle(tipo: TipoPersona) {
+if (tipo === 'fisica') return { color: '#4b91b9', background: '#e4f4ff' }
+if (tipo === 'juridica') return { color: '#8e69d0', background: '#eee9ff' }
+return { color: '#be9342', background: '#fff3d3' }
 }
 
 export default function ClientesPage() {
@@ -104,8 +133,19 @@ const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
 const [modalOpen, setModalOpen] = useState(false)
 const [form, setForm] = useState<FormState>(EMPTY_FORM)
+const [cuitTouched, setCuitTouched] = useState(false)
 const [creating, setCreating] = useState(false)
 const [formError, setFormError] = useState<string | null>(null)
+
+const cuitValido = useMemo(() => esCuitValido(form.cuit), [form.cuit])
+const personType = useMemo(() => tipoPersonaDesdeCuit(form.cuit), [form.cuit])
+
+function openModal() {
+setForm(EMPTY_FORM)
+setCuitTouched(false)
+setFormError(null)
+setModalOpen(true)
+}
 
 useEffect(() => {
 let cancelled = false
@@ -137,7 +177,11 @@ const activeCount = useMemo(() => clients.filter((c) => !c.archived).length, [cl
 
 async function handleCreate(e: React.FormEvent) {
 e.preventDefault()
-if (!form.name.trim() || !form.cuit.trim()) return
+setCuitTouched(true)
+if (!form.name.trim() || !esCuitValido(form.cuit)) {
+setFormError('Revisá el nombre y el CUIT: el CUIT tiene que ser válido.')
+return
+}
 setCreating(true)
 setFormError(null)
 const sb = createClient()
@@ -147,9 +191,11 @@ const { data, error } = await sb
 .insert({
 name: form.name.trim(),
 cuit: form.cuit.trim(),
-type: form.type,
 owner: form.owner.trim(),
-exercise: form.exercise.trim(),
+accounting_owner: personType === 'juridica' ? (form.accountingOwner.trim() || null) : null,
+email: form.email.trim() || null,
+phone: form.phone.trim() || null,
+notes: form.notes.trim() || null,
 created_by: userData.user?.id ?? null,
 })
 .select()
@@ -235,7 +281,7 @@ return <main className="app-shell">
 <div className="content-wrap">
 <div className="page-heading">
 <div><p className="eyebrow"><Sparkles size={13} /> Cartera de clientes</p><h1>Clientes<span>.</span></h1><p className="subtitle">{loading ? 'Cargando...' : `${activeCount} ${activeCount === 1 ? 'cliente activo' : 'clientes activos'}`}</p></div>
-<button className="primary-button" onClick={() => { setForm(EMPTY_FORM); setFormError(null); setModalOpen(true) }}><Plus size={17} /> Nuevo cliente</button>
+<button className="primary-button" onClick={openModal}><Plus size={17} /> Nuevo cliente</button>
 </div>
 
 <div className="toolbar">
@@ -256,9 +302,8 @@ Ver archivados
 <thead>
 <tr>
 <th className="client-col">CLIENTE</th>
-<th>TIPO</th>
+<th>PROCESO</th>
 <th>A CARGO</th>
-<th>EJERCICIO</th>
 <th>CREADO</th>
 <th aria-label="Acciones" />
 </tr>
@@ -272,9 +317,11 @@ Ver archivados
 <span><strong>{c.name}</strong><small>{c.cuit}</small></span>
 </span>
 </td>
-<td><span className={`type-pill type-${c.type.toLowerCase()}`}>{c.type}</span></td>
-<td>{c.owner ? <span className="owner"><span className="owner-dot">{c.owner.split(' ').map((x) => x[0]).join('')}</span>{c.owner}</span> : <span className="drawer-muted">Sin asignar</span>}</td>
-<td>{c.exercise || <span className="drawer-muted">—</span>}</td>
+<td><span className="type-pill" style={personaStyle(c.person_type)}>{personaLabel(c.person_type)}</span></td>
+<td>
+{c.owner ? <span className="owner"><span className="owner-dot">{c.owner.split(' ').map((x) => x[0]).join('')}</span>{c.owner}</span> : <span className="drawer-muted">Sin asignar</span>}
+{c.person_type === 'juridica' && c.accounting_owner && <div className="drawer-muted" style={{ marginTop: 4 }}>Contabilidad: {c.accounting_owner}</div>}
+</td>
 <td className="drawer-muted">{formatDate(c.created_at)}</td>
 <td>
 <div className="row-actions">
@@ -300,7 +347,7 @@ Ver archivados
 <UsersRound size={28} />
 <h3>{showArchived ? 'No hay clientes archivados' : 'Todavía no cargaste clientes'}</h3>
 <p>{showArchived ? 'Los clientes que archives van a aparecer acá.' : 'Empezá cargando el primer cliente del estudio.'}</p>
-{!showArchived && <button className="primary-button" style={{ margin: '16px auto 0' }} onClick={() => { setForm(EMPTY_FORM); setFormError(null); setModalOpen(true) }}><Plus size={17} /> Nuevo cliente</button>}
+{!showArchived && <button className="primary-button" style={{ margin: '16px auto 0' }} onClick={openModal}><Plus size={17} /> Nuevo cliente</button>}
 </div>
 )}
 </div>
@@ -321,23 +368,45 @@ Ver archivados
 </div>
 <div className="form-field">
 <label htmlFor="client-cuit">CUIT</label>
-<input id="client-cuit" required value={form.cuit} onChange={(e) => setForm({ ...form, cuit: e.target.value })} placeholder="30-12345678-9" />
+<input id="client-cuit" required value={form.cuit} onChange={(e) => setForm({ ...form, cuit: formatearCuit(e.target.value) })} onBlur={() => setCuitTouched(true)} placeholder="30-12345678-9" inputMode="numeric" />
+{cuitTouched && form.cuit.length > 0 && !cuitValido && <p className="form-error" style={{ marginTop: 6 }}>CUIT inválido. Revisá el número.</p>}
+{cuitValido && (
+<p className="drawer-muted" style={{ marginTop: 6, fontSize: 12 }}>
+{personType === 'fisica' && 'Persona física — el proceso termina en Impuestos.'}
+{personType === 'juridica' && 'Persona jurídica — el proceso sigue en Contabilidad.'}
+{personType === 'revisar' && 'Prefijo poco común — revisar el circuito a mano.'}
+</p>
+)}
+</div>
+<div className="form-field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+<div>
+<label htmlFor="client-email">Email</label>
+<input id="client-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@mail.com" />
+</div>
+<div>
+<label htmlFor="client-phone">Teléfono</label>
+<input id="client-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="11 2345-6789" />
+</div>
 </div>
 <div className="form-field">
-<label htmlFor="client-type">Tipo</label>
-<select id="client-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as FormState['type'] })}>
-<option value="A">A</option>
-<option value="B">B</option>
-<option value="C">C</option>
+<label htmlFor="client-owner">A cargo (Impuestos)</label>
+<select id="client-owner" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>
+<option value="">Elegir responsable</option>
+{RESPONSABLES_IMPUESTOS.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}
 </select>
 </div>
+{personType === 'juridica' && (
 <div className="form-field">
-<label htmlFor="client-owner">A cargo de</label>
-<input id="client-owner" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="Ej: Mariana S." />
+<label htmlFor="client-accounting-owner">A cargo (Contabilidad)</label>
+<select id="client-accounting-owner" value={form.accountingOwner} onChange={(e) => setForm({ ...form, accountingOwner: e.target.value })}>
+<option value="">Sin asignar todavía</option>
+{RESPONSABLES_CONTABILIDAD.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}
+</select>
 </div>
+)}
 <div className="form-field">
-<label htmlFor="client-exercise">Ejercicio</label>
-<input id="client-exercise" value={form.exercise} onChange={(e) => setForm({ ...form, exercise: e.target.value })} placeholder="Ej: Junio" />
+<label htmlFor="client-notes">Notas (opcional)</label>
+<textarea id="client-notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Algo corto para tener de referencia" style={{ width: '100%', padding: '11px 12px', border: '1px solid #dedee8', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', resize: 'vertical' }} />
 </div>
 {formError && <p className="form-error">{formError}</p>}
 <div className="form-actions">
