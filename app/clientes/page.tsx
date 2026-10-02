@@ -24,6 +24,7 @@ RotateCcw,
 Search,
 Settings2,
 Sparkles,
+Trash2,
 UsersRound,
 X,
 } from 'lucide-react'
@@ -130,6 +131,7 @@ const [loadError, setLoadError] = useState<string | null>(null)
 const [search, setSearch] = useState('')
 const [showArchived, setShowArchived] = useState(false)
 const [confirmingId, setConfirmingId] = useState<string | null>(null)
+const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
 
 const [modalOpen, setModalOpen] = useState(false)
 const [form, setForm] = useState<FormState>(EMPTY_FORM)
@@ -234,6 +236,13 @@ const { data, error } = await sb
 if (!error && data) setClients((prev) => prev.map((c) => (c.id === id ? (data as ClientRow) : c)))
 }
 
+async function handleDeleteForever(id: string) {
+const sb = createClient()
+const { error } = await sb.from('clients').delete().eq('id', id)
+if (!error) setClients((prev) => prev.filter((c) => c.id !== id))
+setConfirmingDeleteId(null)
+}
+
 return <main className="app-shell">
 <aside className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
 <div className="brand"><div className="brand-mark">O</div>{sidebarOpen && <><span className="brand-name">OBVIO</span><span className="brand-dot" /></>}</div>
@@ -326,7 +335,17 @@ Ver archivados
 <td>
 <div className="row-actions">
 {c.archived ? (
+confirmingDeleteId === c.id ? (
+<span className="confirm-inline">¿Eliminar para siempre?
+<button className="confirm-yes" onClick={() => handleDeleteForever(c.id)}>Sí</button>
+<button className="confirm-no" onClick={() => setConfirmingDeleteId(null)}>No</button>
+</span>
+) : (
+<>
 <button className="link-muted" onClick={() => handleRestore(c.id)}><RotateCcw size={13} /> Restaurar</button>
+<button className="link-danger" onClick={() => setConfirmingDeleteId(c.id)}><Trash2 size={13} /> Eliminar definitivamente</button>
+</>
+)
 ) : confirmingId === c.id ? (
 <span className="confirm-inline">¿Archivar?
 <button className="confirm-yes" onClick={() => handleArchive(c.id)}>Sí</button>
