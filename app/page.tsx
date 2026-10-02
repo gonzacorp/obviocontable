@@ -63,10 +63,30 @@ function StatCard({ icon, label, value, detail, color }: { icon: React.ReactNode
 return <div className="stat-card"><div className="stat-top"><span className={`stat-icon ${color}`}>{icon}</span><span className="stat-detail">{detail}</span></div><p className="stat-label">{label}</p><p className="stat-value">{value}</p></div>
 }
 
+function getDisplayName(user: { email?: string | null; user_metadata?: Record<string, unknown> } | null | undefined): string {
+const meta = user?.user_metadata ?? {}
+const fromMeta = (meta.full_name ?? meta.name) as string | undefined
+if (typeof fromMeta === 'string' && fromMeta.trim()) return fromMeta.trim()
+const emailName = typeof user?.email === 'string' ? user.email.split('@')[0] : ''
+if (!emailName) return ''
+return emailName.replace(/[._-]+/g, ' ').trim().split(' ').filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+function getInitials(name: string): string {
+const parts = name.trim().split(/\s+/).filter(Boolean)
+if (parts.length === 0) return ''
+if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
 export default function Page() {
 const [selected, setSelected] = useState<Client | null>(null)
+const [accountName, setAccountName] = useState('')
 useEffect(() => {
-createClient().auth.getUser().then(({ data }) => { if (!data.user) window.location.replace('/login') })
+createClient().auth.getUser().then(({ data }) => {
+if (!data.user) { window.location.replace('/login'); return }
+setAccountName(getDisplayName(data.user))
+})
 }, [])
 const [search, setSearch] = useState('')
 const [filter, setFilter] = useState('Todos')
@@ -75,6 +95,8 @@ const [profileMenuOpen, setProfileMenuOpen] = useState(false)
 const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false)
 const profileMenuRef = useRef<HTMLDivElement>(null)
 const sidebarMenuRef = useRef<HTMLDivElement>(null)
+const firstName = accountName.split(' ')[0] || ''
+const accountInitials = getInitials(accountName) || 'U'
 
 useEffect(() => {
 function handleClickOutside(event: MouseEvent) {
@@ -112,7 +134,7 @@ return <main className="app-shell">
 <div className="help-card"><CircleHelp size={18} /><div><strong>¿Necesitás ayuda?</strong><span>Visitá el centro de soporte</span></div></div>
 <div className="user-mini-wrap" ref={sidebarMenuRef}>
 <button className="user-mini" onClick={() => setSidebarMenuOpen((open) => !open)} aria-haspopup="true" aria-expanded={sidebarMenuOpen}>
-<span className="user-avatar">MS</span>{sidebarOpen && <div><strong>Mariana Soto</strong><span>Contadora de impuestos</span></div>}<MoreHorizontal size={17} />
+<span className="user-avatar">{accountInitials}</span>{sidebarOpen && <div><strong>{accountName || 'Mi cuenta'}</strong><span>Contadora de impuestos</span></div>}<MoreHorizontal size={17} />
 </button>
 {sidebarMenuOpen && <div className="account-menu account-menu-up" role="menu">
 <button className="account-menu-item" role="menuitem" onClick={handleSignOut}><LogOut size={15} /> Cerrar sesión</button>
@@ -129,7 +151,7 @@ return <main className="app-shell">
 <button className="icon-button"><CircleHelp size={18} /></button>
 <div className="profile-chip-wrap" ref={profileMenuRef}>
 <button className="profile-chip" onClick={() => setProfileMenuOpen((open) => !open)} aria-haspopup="true" aria-expanded={profileMenuOpen}>
-<span className="user-avatar small">MS</span><span>Mariana Soto</span><ChevronDown size={14} />
+<span className="user-avatar small">{accountInitials}</span><span>{accountName || 'Mi cuenta'}</span><ChevronDown size={14} />
 </button>
 {profileMenuOpen && <div className="account-menu" role="menu">
 <button className="account-menu-item" role="menuitem" onClick={handleSignOut}><LogOut size={15} /> Cerrar sesión</button>
@@ -138,7 +160,7 @@ return <main className="app-shell">
 </div>
 </header>
 <div className="content-wrap">
-<div className="page-heading"><div><p className="eyebrow"><Sparkles size={13} /> Mi espacio de trabajo</p><h1>Buen día, Mariana<span>.</span></h1><p className="subtitle">Este es el estado de tus presentaciones para hoy.</p></div><button className="primary-button"><Plus size={17} /> Nueva presentación</button></div>
+<div className="page-heading"><div><p className="eyebrow"><Sparkles size={13} /> Mi espacio de trabajo</p><h1>Buen día{firstName ? `, ${firstName}` : ''}<span>.</span></h1><p className="subtitle">Este es el estado de tus presentaciones para hoy.</p></div><button className="primary-button"><Plus size={17} /> Nueva presentación</button></div>
 <div className="stats-grid"><StatCard icon={<FileCheck2 size={17} />} label="Presentaciones del mes" value="128" detail="+12% vs. mes anterior" color="purple" /><StatCard icon={<Clock3 size={17} />} label="En proceso" value="24" detail="8 requieren atención" color="yellow" /><StatCard icon={<Check size={18} />} label="Completadas" value="89" detail="69.5% del total" color="green" /><StatCard icon={<Bell size={17} />} label="Próximos vencimientos" value="15" detail="En los próximos 7 días" color="red" /></div>
 <div className="section-heading"><div><h2>Presentaciones de septiembre</h2><p>Seguimiento de obligaciones impositivas de tu cartera.</p></div><div className="month-control"><button className="icon-button"><ChevronLeft size={16} /></button><strong>Septiembre 2026</strong><button className="icon-button"><ChevronRight size={16} /></button></div></div>
 <div className="toolbar"><div className="search-box"><Search size={17} /><input placeholder="Buscar por cliente o CUIT..." value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="toolbar-actions"><button className="filter-button"><Filter size={16} /> Filtros <span>2</span></button><div className="select-wrap"><SlidersHorizontal size={16} /><select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filtrar responsable"><option>Todos</option><option>Mariana S.</option><option>Sofía R.</option></select><ChevronDown size={15} /></div></div></div>
