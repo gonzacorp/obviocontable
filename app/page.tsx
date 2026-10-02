@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName, getInitials } from '@/lib/account'
 import Link from 'next/link'
 import {
 Bell,
@@ -63,22 +64,6 @@ function StatCard({ icon, label, value, detail, color }: { icon: React.ReactNode
 return <div className="stat-card"><div className="stat-top"><span className={`stat-icon ${color}`}>{icon}</span><span className="stat-detail">{detail}</span></div><p className="stat-label">{label}</p><p className="stat-value">{value}</p></div>
 }
 
-function getDisplayName(user: { email?: string | null; user_metadata?: Record<string, unknown> } | null | undefined): string {
-const meta = user?.user_metadata ?? {}
-const fromMeta = (meta.full_name ?? meta.name) as string | undefined
-if (typeof fromMeta === 'string' && fromMeta.trim()) return fromMeta.trim()
-const emailName = typeof user?.email === 'string' ? user.email.split('@')[0] : ''
-if (!emailName) return ''
-return emailName.replace(/[._-]+/g, ' ').trim().split(' ').filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
-}
-
-function getInitials(name: string): string {
-const parts = name.trim().split(/\s+/).filter(Boolean)
-if (parts.length === 0) return ''
-if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-return (parts[0][0] + parts[1][0]).toUpperCase()
-}
-
 export default function Page() {
 const [selected, setSelected] = useState<Client | null>(null)
 const [accountName, setAccountName] = useState('')
@@ -128,7 +113,7 @@ return <main className="app-shell">
 <button className="nav-item"><FileCheck2 size={18} /><span>Estadísticas</span></button>
 <button className="nav-item"><ListFilter size={18} /><span>Auditoría</span></button>
 <p className="nav-caption space-top">Configuración</p>
-<button className="nav-item"><Settings2 size={18} /><span>Preferencias</span></button>
+<Link href="/preferencias" className="nav-item"><Settings2 size={18} /><span>Preferencias</span></Link>
 </nav>
 <div className="sidebar-bottom">
 <div className="help-card"><CircleHelp size={18} /><div><strong>¿Necesitás ayuda?</strong><span>Visitá el centro de soporte</span></div></div>
