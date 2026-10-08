@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName, getInitials } from '@/lib/account'
+import { initialsForName, toneForName } from '@/lib/clients'
 import { esCuitValido, formatearCuit, tipoPersonaDesdeCuit, type TipoPersona } from '@/lib/cuit'
 import {
 Archive,
@@ -61,24 +62,10 @@ category: string
 const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '', locality: '', category: '' }
 
 const CATEGORIES = ['Agropecuarias', 'Comercial', 'Servicios', 'Industrial', 'Droguerías']
-const TONES = ['violet', 'gold', 'blue', 'pink', 'green', 'orange']
-
 // Por ahora todos están en Impuestos; cuando definas el equipo de
 // Contabilidad, agregalo acá.
 const RESPONSABLES_IMPUESTOS = ['Mati L', 'Nico C', 'Nico G']
 const RESPONSABLES_CONTABILIDAD = ['Mati L', 'Nico C', 'Nico G']
-
-function toneForName(name: string) {
-let hash = 0
-for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-return TONES[hash % TONES.length]
-}
-
-function initialsForName(name: string) {
-const parts = name.trim().split(/\s+/).filter(Boolean)
-const initials = (parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')
-return initials.toUpperCase() || '?'
-}
 
 function formatDate(iso: string) {
 try {
