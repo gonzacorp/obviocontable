@@ -31,17 +31,50 @@ type ClientRow = {
 id: string
 name: string
 cuit: string
-type: 'A' | 'B' | 'C'
-owner: string
-exercise: string
+locality: string | null
+email: string | null
+phone: string | null
+category: string | null
+owner: string | null
+accounting_owner: string | null
 archived: boolean
 archived_at: string | null
 created_at: string
 }
 
-type FormState = { name: string; cuit: string; type: 'A' | 'B' | 'C'; owner: string; exercise: string }
+type FormState = {
+name: string
+cuit: string
+locality: string
+email: string
+phone: string
+category: string
+owner: string
+accounting_owner: string
+}
 
-const EMPTY_FORM: FormState = { name: '', cuit: '', type: 'B', owner: '', exercise: '' }
+const EMPTY_FORM: FormState = { name: '', cuit: '', locality: '', email: '', phone: '', category: '', owner: '', accounting_owner: '' }
+
+const CATEGORIES = ['Agropecuarias', 'Comercial', 'Servicios', 'Industrial', 'Droguerías']
+// Responsables del estudio. Editar acá para sumar o quitar gente.
+const TAX_OWNERS = ['Nico G', 'Nico C']
+const ACCOUNTING_OWNERS = ['Nico G', 'Nico C']
+
+// Personas físicas: 20, 23, 24, 27. Personas jurídicas / empresas: 30, 33, 34.
+type CuitKind = 'fisica' | 'juridica' | 'unknown'
+function cuitKind(cuit: string): CuitKind {
+const prefix = cuit.replace(/\D/g, '').slice(0, 2)
+if (['20', '23', '24', '27'].includes(prefix)) return 'fisica'
+if (['30', '33', '34'].includes(prefix)) return 'juridica'
+return 'unknown'
+}
+
+function formatCuit(value: string) {
+const d = value.replace(/\D/g, '').slice(0, 11)
+if (d.length <= 2) return d
+if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
+return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
+}
 const TONES = ['violet', 'gold', 'blue', 'pink', 'green', 'orange']
 
 function toneForName(name: string) {
@@ -126,11 +159,13 @@ load()
 return () => { cancelled = true }
 }, [])
 
+const kind = cuitKind(form.cuit)
+
 const filtered = useMemo(() => {
 const q = search.trim().toLowerCase()
 return clients
 .filter((c) => c.archived === showArchived)
-.filter((c) => !q || c.name.toLowerCase().includes(q) || c.cuit.toLowerCase().includes(q))
+.filter((c) => !q || c.name.toLowerCase().includes(q) || c.cuit.toLowerCase().includes(q) || (c.locality ?? '').toLowerCase().includes(q))
 }, [clients, search, showArchived])
 
 const activeCount = useMemo(() => clients.filter((c) => !c.archived).length, [clients])
@@ -138,6 +173,7 @@ const activeCount = useMemo(() => clients.filter((c) => !c.archived).length, [cl
 async function handleCreate(e: React.FormEvent) {
 e.preventDefault()
 if (!form.name.trim() || !form.cuit.trim()) return
+if (form.cuit.replace(/\D/g, '').length !== 11) { setFormError('El CUIT debe tener 11 dígitos.'); return }
 setCreating(true)
 setFormError(null)
 const sb = createClient()
@@ -147,9 +183,12 @@ const { data, error } = await sb
 .insert({
 name: form.name.trim(),
 cuit: form.cuit.trim(),
-type: form.type,
-owner: form.owner.trim(),
-exercise: form.exercise.trim(),
+locality: form.locality.trim() || null,
+email: form.email.trim() || null,
+phone: form.phone.trim() || null,
+category: form.category || null,
+owner: form.owner || null,
+accounting_owner: kind === 'juridica' ? form.accounting_owner || null : null,
 created_by: userData.user?.id ?? null,
 })
 .select()
@@ -256,9 +295,10 @@ Ver archivados
 <thead>
 <tr>
 <th className="client-col">CLIENTE</th>
-<th>TIPO</th>
+<th>CATEGORÍA</th>
+<th>LOCALIDAD</th>
+<th>CONTACTO</th>
 <th>A CARGO</th>
-<th>EJERCICIO</th>
 <th>CREADO</th>
 <th aria-label="Acciones" />
 </tr>
@@ -272,9 +312,13 @@ Ver archivados
 <span><strong>{c.name}</strong><small>{c.cuit}</small></span>
 </span>
 </td>
-<td><span className={`type-pill type-${c.type.toLowerCase()}`}>{c.type}</span></td>
-<td>{c.owner ? <span className="owner"><span className="owner-dot">{c.owner.split(' ').map((x) => x[0]).join('')}</span>{c.owner}</span> : <span className="drawer-muted">Sin asignar</span>}</td>
-<td>{c.exercise || <span className="drawer-muted">—</span>}</td>
+<td>{c.category || <span className="drawer-muted">—</span>}</td>
+<td>{c.locality || <span className="drawer-muted">—</span>}</td>
+<td>{c.email || c.phone ? <span className="client-contact">{c.email}{c.email && c.phone && <br />}{c.phone}</span> : <span className="drawer-muted">—</span>}</td>
+<td>{c.owner || c.accounting_owner ? <span style={{ display: 'grid', gap: 4 }}>
+{c.owner && <span className="owner"><span className="owner-dot">{c.owner.split(' ').map((x) => x[0]).join('')}</span>{c.owner}<small className="drawer-muted"> · Impuestos</small></span>}
+{c.accounting_owner && <span className="owner"><span className="owner-dot">{c.accounting_owner.split(' ').map((x) => x[0]).join('')}</span>{c.accounting_owner}<small className="drawer-muted"> · Contabilidad</small></span>}
+</span> : <span className="drawer-muted">Sin asignar</span>}</td>
 <td className="drawer-muted">{formatDate(c.created_at)}</td>
 <td>
 <div className="row-actions">
@@ -321,24 +365,47 @@ Ver archivados
 </div>
 <div className="form-field">
 <label htmlFor="client-cuit">CUIT</label>
-<input id="client-cuit" required value={form.cuit} onChange={(e) => setForm({ ...form, cuit: e.target.value })} placeholder="30-12345678-9" />
+<input id="client-cuit" required inputMode="numeric" value={form.cuit} onChange={(e) => {
+const cuit = formatCuit(e.target.value)
+const k = cuitKind(cuit)
+setForm({ ...form, cuit, accounting_owner: k === 'juridica' ? form.accounting_owner : '' })
+}} placeholder="30-12345678-9" />
+{kind === 'fisica' && <small className="drawer-muted">Persona física</small>}
+{kind === 'juridica' && <small className="drawer-muted">Persona jurídica / empresa</small>}
 </div>
 <div className="form-field">
-<label htmlFor="client-type">Tipo</label>
-<select id="client-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as FormState['type'] })}>
-<option value="A">A</option>
-<option value="B">B</option>
-<option value="C">C</option>
+<label htmlFor="client-locality">Localidad</label>
+<input id="client-locality" value={form.locality} onChange={(e) => setForm({ ...form, locality: e.target.value })} placeholder="Ej: Rosario" />
+</div>
+<div className="form-field">
+<label htmlFor="client-email">Email</label>
+<input id="client-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@correo.com" />
+</div>
+<div className="form-field">
+<label htmlFor="client-phone">Teléfono</label>
+<input id="client-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Ej: 341 555 1234" />
+</div>
+<div className="form-field">
+<label htmlFor="client-category">Categoría</label>
+<select id="client-category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+<option value="">Sin categoría</option>
+{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
 </select>
 </div>
-<div className="form-field">
-<label htmlFor="client-owner">A cargo de</label>
-<input id="client-owner" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="Ej: Mariana S." />
-</div>
-<div className="form-field">
-<label htmlFor="client-exercise">Ejercicio</label>
-<input id="client-exercise" value={form.exercise} onChange={(e) => setForm({ ...form, exercise: e.target.value })} placeholder="Ej: Junio" />
-</div>
+{kind !== 'unknown' && <div className="form-field">
+<label htmlFor="client-owner">A cargo de impuestos</label>
+<select id="client-owner" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>
+<option value="">Sin asignar</option>
+{TAX_OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+</select>
+</div>}
+{kind === 'juridica' && <div className="form-field">
+<label htmlFor="client-accounting">A cargo de contabilidad</label>
+<select id="client-accounting" value={form.accounting_owner} onChange={(e) => setForm({ ...form, accounting_owner: e.target.value })}>
+<option value="">Sin asignar</option>
+{ACCOUNTING_OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+</select>
+</div>}
 {formError && <p className="form-error">{formError}</p>}
 <div className="form-actions">
 <button type="button" className="button-outline" onClick={() => setModalOpen(false)} disabled={creating}>Cancelar</button>
