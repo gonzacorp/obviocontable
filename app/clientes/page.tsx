@@ -174,8 +174,6 @@ load()
 return () => { cancelled = true }
 }, [])
 
-const kind = cuitKind(form.cuit)
-
 const filtered = useMemo(() => {
 const q = search.trim().toLowerCase()
 return clients
