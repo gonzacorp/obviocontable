@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName, getInitials } from '@/lib/account'
+import { esCuitValido, formatearCuit, tipoPersonaDesdeCuit, type TipoPersona } from '@/lib/cuit'
 import {
 Archive,
 Bell,
@@ -23,6 +24,7 @@ RotateCcw,
 Search,
 Settings2,
 Sparkles,
+Trash2,
 UsersRound,
 X,
 } from 'lucide-react'
@@ -31,12 +33,14 @@ type ClientRow = {
 id: string
 name: string
 cuit: string
-locality: string | null
+person_type: TipoPersona
+owner: string
+accounting_owner: string | null
 email: string | null
 phone: string | null
+notes: string | null
+locality: string | null
 category: string | null
-owner: string | null
-accounting_owner: string | null
 archived: boolean
 archived_at: string | null
 created_at: string
@@ -45,37 +49,24 @@ created_at: string
 type FormState = {
 name: string
 cuit: string
-locality: string
+owner: string
+accountingOwner: string
 email: string
 phone: string
+notes: string
+locality: string
 category: string
-owner: string
-accounting_owner: string
 }
 
-const EMPTY_FORM: FormState = { name: '', cuit: '', locality: '', email: '', phone: '', category: '', owner: '', accounting_owner: '' }
+const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '', locality: '', category: '' }
 
 const CATEGORIES = ['Agropecuarias', 'Comercial', 'Servicios', 'Industrial', 'Droguerías']
-// Responsables del estudio. Editar acá para sumar o quitar gente.
-const TAX_OWNERS = ['Nico G', 'Nico C']
-const ACCOUNTING_OWNERS = ['Nico G', 'Nico C']
-
-// Personas físicas: 20, 23, 24, 27. Personas jurídicas / empresas: 30, 33, 34.
-type CuitKind = 'fisica' | 'juridica' | 'unknown'
-function cuitKind(cuit: string): CuitKind {
-const prefix = cuit.replace(/\D/g, '').slice(0, 2)
-if (['20', '23', '24', '27'].includes(prefix)) return 'fisica'
-if (['30', '33', '34'].includes(prefix)) return 'juridica'
-return 'unknown'
-}
-
-function formatCuit(value: string) {
-const d = value.replace(/\D/g, '').slice(0, 11)
-if (d.length <= 2) return d
-if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
-return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
-}
 const TONES = ['violet', 'gold', 'blue', 'pink', 'green', 'orange']
+
+// Por ahora todos están en Impuestos; cuando definas el equipo de
+// Contabilidad, agregalo acá.
+const RESPONSABLES_IMPUESTOS = ['Mati L', 'Nico C', 'Nico G']
+const RESPONSABLES_CONTABILIDAD = ['Mati L', 'Nico C', 'Nico G']
 
 function toneForName(name: string) {
 let hash = 0
@@ -95,6 +86,18 @@ return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short
 } catch {
 return iso
 }
+}
+
+function personaLabel(tipo: TipoPersona) {
+if (tipo === 'fisica') return 'Impuestos'
+if (tipo === 'juridica') return 'Impuestos + Contabilidad'
+return 'Revisar'
+}
+
+function personaStyle(tipo: TipoPersona) {
+if (tipo === 'fisica') return { color: '#4b91b9', background: '#e4f4ff' }
+if (tipo === 'juridica') return { color: '#8e69d0', background: '#eee9ff' }
+return { color: '#be9342', background: '#fff3d3' }
 }
 
 export default function ClientesPage() {
@@ -134,11 +137,23 @@ const [loadError, setLoadError] = useState<string | null>(null)
 const [search, setSearch] = useState('')
 const [showArchived, setShowArchived] = useState(false)
 const [confirmingId, setConfirmingId] = useState<string | null>(null)
+const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
 
 const [modalOpen, setModalOpen] = useState(false)
 const [form, setForm] = useState<FormState>(EMPTY_FORM)
+const [cuitTouched, setCuitTouched] = useState(false)
 const [creating, setCreating] = useState(false)
 const [formError, setFormError] = useState<string | null>(null)
+
+const cuitValido = useMemo(() => esCuitValido(form.cuit), [form.cuit])
+const personType = useMemo(() => tipoPersonaDesdeCuit(form.cuit), [form.cuit])
+
+function openModal() {
+setForm(EMPTY_FORM)
+setCuitTouched(false)
+setFormError(null)
+setModalOpen(true)
+}
 
 useEffect(() => {
 let cancelled = false
@@ -159,8 +174,6 @@ load()
 return () => { cancelled = true }
 }, [])
 
-const kind = cuitKind(form.cuit)
-
 const filtered = useMemo(() => {
 const q = search.trim().toLowerCase()
 return clients
@@ -172,8 +185,11 @@ const activeCount = useMemo(() => clients.filter((c) => !c.archived).length, [cl
 
 async function handleCreate(e: React.FormEvent) {
 e.preventDefault()
-if (!form.name.trim() || !form.cuit.trim()) return
-if (form.cuit.replace(/\D/g, '').length !== 11) { setFormError('El CUIT debe tener 11 dígitos.'); return }
+setCuitTouched(true)
+if (!form.name.trim() || !esCuitValido(form.cuit)) {
+setFormError('Revisá el nombre y el CUIT: el CUIT tiene que ser válido.')
+return
+}
 setCreating(true)
 setFormError(null)
 const sb = createClient()
@@ -183,12 +199,13 @@ const { data, error } = await sb
 .insert({
 name: form.name.trim(),
 cuit: form.cuit.trim(),
-locality: form.locality.trim() || null,
+owner: form.owner.trim(),
+accounting_owner: personType === 'juridica' ? (form.accountingOwner.trim() || null) : null,
 email: form.email.trim() || null,
 phone: form.phone.trim() || null,
+notes: form.notes.trim() || null,
+locality: form.locality.trim() || null,
 category: form.category || null,
-owner: form.owner || null,
-accounting_owner: kind === 'juridica' ? form.accounting_owner || null : null,
 created_by: userData.user?.id ?? null,
 })
 .select()
@@ -225,6 +242,13 @@ const { data, error } = await sb
 .select()
 .single()
 if (!error && data) setClients((prev) => prev.map((c) => (c.id === id ? (data as ClientRow) : c)))
+}
+
+async function handleDeleteForever(id: string) {
+const sb = createClient()
+const { error } = await sb.from('clients').delete().eq('id', id)
+if (!error) setClients((prev) => prev.filter((c) => c.id !== id))
+setConfirmingDeleteId(null)
 }
 
 return <main className="app-shell">
@@ -274,7 +298,7 @@ return <main className="app-shell">
 <div className="content-wrap">
 <div className="page-heading">
 <div><p className="eyebrow"><Sparkles size={13} /> Cartera de clientes</p><h1>Clientes<span>.</span></h1><p className="subtitle">{loading ? 'Cargando...' : `${activeCount} ${activeCount === 1 ? 'cliente activo' : 'clientes activos'}`}</p></div>
-<button className="primary-button" onClick={() => { setForm(EMPTY_FORM); setFormError(null); setModalOpen(true) }}><Plus size={17} /> Nuevo cliente</button>
+<button className="primary-button" onClick={openModal}><Plus size={17} /> Nuevo cliente</button>
 </div>
 
 <div className="toolbar">
@@ -295,6 +319,7 @@ Ver archivados
 <thead>
 <tr>
 <th className="client-col">CLIENTE</th>
+<th>PROCESO</th>
 <th>CATEGORÍA</th>
 <th>LOCALIDAD</th>
 <th>CONTACTO</th>
@@ -312,18 +337,29 @@ Ver archivados
 <span><strong>{c.name}</strong><small>{c.cuit}</small></span>
 </span>
 </td>
+<td><span className="type-pill" style={personaStyle(c.person_type)}>{personaLabel(c.person_type)}</span></td>
 <td>{c.category || <span className="drawer-muted">—</span>}</td>
 <td>{c.locality || <span className="drawer-muted">—</span>}</td>
-<td>{c.email || c.phone ? <span className="client-contact">{c.email}{c.email && c.phone && <br />}{c.phone}</span> : <span className="drawer-muted">—</span>}</td>
-<td>{c.owner || c.accounting_owner ? <span style={{ display: 'grid', gap: 4 }}>
-{c.owner && <span className="owner"><span className="owner-dot">{c.owner.split(' ').map((x) => x[0]).join('')}</span>{c.owner}<small className="drawer-muted"> · Impuestos</small></span>}
-{c.accounting_owner && <span className="owner"><span className="owner-dot">{c.accounting_owner.split(' ').map((x) => x[0]).join('')}</span>{c.accounting_owner}<small className="drawer-muted"> · Contabilidad</small></span>}
-</span> : <span className="drawer-muted">Sin asignar</span>}</td>
+<td>{c.email || c.phone ? <span>{c.email}{c.email && c.phone && <br />}{c.phone}</span> : <span className="drawer-muted">—</span>}</td>
+<td>
+{c.owner ? <span className="owner"><span className="owner-dot">{c.owner.split(' ').map((x) => x[0]).join('')}</span>{c.owner}</span> : <span className="drawer-muted">Sin asignar</span>}
+{c.person_type === 'juridica' && c.accounting_owner && <div className="drawer-muted" style={{ marginTop: 4 }}>Contabilidad: {c.accounting_owner}</div>}
+</td>
 <td className="drawer-muted">{formatDate(c.created_at)}</td>
 <td>
 <div className="row-actions">
 {c.archived ? (
+confirmingDeleteId === c.id ? (
+<span className="confirm-inline">¿Eliminar para siempre?
+<button className="confirm-yes" onClick={() => handleDeleteForever(c.id)}>Sí</button>
+<button className="confirm-no" onClick={() => setConfirmingDeleteId(null)}>No</button>
+</span>
+) : (
+<>
 <button className="link-muted" onClick={() => handleRestore(c.id)}><RotateCcw size={13} /> Restaurar</button>
+<button className="link-danger" onClick={() => setConfirmingDeleteId(c.id)}><Trash2 size={13} /> Eliminar definitivamente</button>
+</>
+)
 ) : confirmingId === c.id ? (
 <span className="confirm-inline">¿Archivar?
 <button className="confirm-yes" onClick={() => handleArchive(c.id)}>Sí</button>
@@ -344,7 +380,7 @@ Ver archivados
 <UsersRound size={28} />
 <h3>{showArchived ? 'No hay clientes archivados' : 'Todavía no cargaste clientes'}</h3>
 <p>{showArchived ? 'Los clientes que archives van a aparecer acá.' : 'Empezá cargando el primer cliente del estudio.'}</p>
-{!showArchived && <button className="primary-button" style={{ margin: '16px auto 0' }} onClick={() => { setForm(EMPTY_FORM); setFormError(null); setModalOpen(true) }}><Plus size={17} /> Nuevo cliente</button>}
+{!showArchived && <button className="primary-button" style={{ margin: '16px auto 0' }} onClick={openModal}><Plus size={17} /> Nuevo cliente</button>}
 </div>
 )}
 </div>
@@ -365,25 +401,19 @@ Ver archivados
 </div>
 <div className="form-field">
 <label htmlFor="client-cuit">CUIT</label>
-<input id="client-cuit" required inputMode="numeric" value={form.cuit} onChange={(e) => {
-const cuit = formatCuit(e.target.value)
-const k = cuitKind(cuit)
-setForm({ ...form, cuit, accounting_owner: k === 'juridica' ? form.accounting_owner : '' })
-}} placeholder="30-12345678-9" />
-{kind === 'fisica' && <small className="drawer-muted">Persona física</small>}
-{kind === 'juridica' && <small className="drawer-muted">Persona jurídica / empresa</small>}
+<input id="client-cuit" required value={form.cuit} onChange={(e) => setForm({ ...form, cuit: formatearCuit(e.target.value) })} onBlur={() => setCuitTouched(true)} placeholder="30-12345678-9" inputMode="numeric" />
+{cuitTouched && form.cuit.length > 0 && !cuitValido && <p className="form-error" style={{ marginTop: 6 }}>CUIT inválido. Revisá el número.</p>}
+{cuitValido && (
+<p className="drawer-muted" style={{ marginTop: 6, fontSize: 12 }}>
+{personType === 'fisica' && 'Persona física — el proceso termina en Impuestos.'}
+{personType === 'juridica' && 'Persona jurídica — el proceso sigue en Contabilidad.'}
+{personType === 'revisar' && 'Prefijo poco común — revisar el circuito a mano.'}
+</p>
+)}
 </div>
 <div className="form-field">
 <label htmlFor="client-locality">Localidad</label>
 <input id="client-locality" value={form.locality} onChange={(e) => setForm({ ...form, locality: e.target.value })} placeholder="Ej: Rosario" />
-</div>
-<div className="form-field">
-<label htmlFor="client-email">Email</label>
-<input id="client-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@correo.com" />
-</div>
-<div className="form-field">
-<label htmlFor="client-phone">Teléfono</label>
-<input id="client-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Ej: 341 555 1234" />
 </div>
 <div className="form-field">
 <label htmlFor="client-category">Categoría</label>
@@ -392,20 +422,36 @@ setForm({ ...form, cuit, accounting_owner: k === 'juridica' ? form.accounting_ow
 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
 </select>
 </div>
-{kind !== 'unknown' && <div className="form-field">
-<label htmlFor="client-owner">A cargo de impuestos</label>
+<div className="form-field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+<div>
+<label htmlFor="client-email">Email</label>
+<input id="client-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@mail.com" />
+</div>
+<div>
+<label htmlFor="client-phone">Teléfono</label>
+<input id="client-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="11 2345-6789" />
+</div>
+</div>
+<div className="form-field">
+<label htmlFor="client-owner">A cargo (Impuestos)</label>
 <select id="client-owner" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })}>
-<option value="">Sin asignar</option>
-{TAX_OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+<option value="">Elegir responsable</option>
+{RESPONSABLES_IMPUESTOS.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}
 </select>
-</div>}
-{kind === 'juridica' && <div className="form-field">
-<label htmlFor="client-accounting">A cargo de contabilidad</label>
-<select id="client-accounting" value={form.accounting_owner} onChange={(e) => setForm({ ...form, accounting_owner: e.target.value })}>
-<option value="">Sin asignar</option>
-{ACCOUNTING_OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+</div>
+{personType === 'juridica' && (
+<div className="form-field">
+<label htmlFor="client-accounting-owner">A cargo (Contabilidad)</label>
+<select id="client-accounting-owner" value={form.accountingOwner} onChange={(e) => setForm({ ...form, accountingOwner: e.target.value })}>
+<option value="">Sin asignar todavía</option>
+{RESPONSABLES_CONTABILIDAD.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}
 </select>
-</div>}
+</div>
+)}
+<div className="form-field">
+<label htmlFor="client-notes">Notas (opcional)</label>
+<textarea id="client-notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Algo corto para tener de referencia" style={{ width: '100%', padding: '11px 12px', border: '1px solid #dedee8', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', resize: 'vertical' }} />
+</div>
 {formError && <p className="form-error">{formError}</p>}
 <div className="form-actions">
 <button type="button" className="button-outline" onClick={() => setModalOpen(false)} disabled={creating}>Cancelar</button>
