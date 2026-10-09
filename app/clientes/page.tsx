@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName, getInitials } from '@/lib/account'
+import { TAXES, taxShortLabel } from '@/lib/taxes'
 import { esCuitValido, formatearCuit, tipoPersonaDesdeCuit, type TipoPersona } from '@/lib/cuit'
 import {
 Archive,
@@ -41,6 +42,7 @@ phone: string | null
 notes: string | null
 locality: string | null
 category: string | null
+taxes: string[]
 archived: boolean
 archived_at: string | null
 created_at: string
@@ -56,9 +58,10 @@ phone: string
 notes: string
 locality: string
 category: string
+taxes: string[]
 }
 
-const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '', locality: '', category: '' }
+const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '', locality: '', category: '', taxes: [] }
 
 const CATEGORIES = ['Agropecuarias', 'Comercial', 'Servicios', 'Industrial', 'Droguerías']
 const TONES = ['violet', 'gold', 'blue', 'pink', 'green', 'orange']
@@ -206,6 +209,7 @@ phone: form.phone.trim() || null,
 notes: form.notes.trim() || null,
 locality: form.locality.trim() || null,
 category: form.category || null,
+taxes: form.taxes,
 created_by: userData.user?.id ?? null,
 })
 .select()
@@ -320,6 +324,7 @@ Ver archivados
 <tr>
 <th className="client-col">CLIENTE</th>
 <th>PROCESO</th>
+<th>IMPUESTOS</th>
 <th>CATEGORÍA</th>
 <th>LOCALIDAD</th>
 <th>CONTACTO</th>
@@ -338,6 +343,7 @@ Ver archivados
 </span>
 </td>
 <td><span className="type-pill" style={personaStyle(c.person_type)}>{personaLabel(c.person_type)}</span></td>
+<td>{c.taxes?.length ? <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{c.taxes.map((t) => <span key={t} className="type-pill" style={{ color: '#6b5bd2', background: '#eee9ff' }}>{taxShortLabel(t)}</span>)}</span> : <span className="drawer-muted">—</span>}</td>
 <td>{c.category || <span className="drawer-muted">—</span>}</td>
 <td>{c.locality || <span className="drawer-muted">—</span>}</td>
 <td>{c.email || c.phone ? <span>{c.email}{c.email && c.phone && <br />}{c.phone}</span> : <span className="drawer-muted">—</span>}</td>
@@ -414,6 +420,17 @@ confirmingDeleteId === c.id ? (
 <div className="form-field">
 <label htmlFor="client-locality">Localidad</label>
 <input id="client-locality" value={form.locality} onChange={(e) => setForm({ ...form, locality: e.target.value })} placeholder="Ej: Rosario" />
+</div>
+<div className="form-field">
+<label>Impuestos que presenta</label>
+<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+{TAXES.map((tax) => (
+<label key={tax.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+<input type="checkbox" checked={form.taxes.includes(tax.id)} onChange={(e) => setForm({ ...form, taxes: e.target.checked ? [...form.taxes, tax.id] : form.taxes.filter((t) => t !== tax.id) })} />
+{tax.label}
+</label>
+))}
+</div>
 </div>
 <div className="form-field">
 <label htmlFor="client-category">Categoría</label>
