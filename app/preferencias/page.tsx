@@ -15,6 +15,7 @@ FileCheck2,
 LayoutDashboard,
 ListFilter,
 LogOut,
+KeyRound,
 Mail,
 MoreHorizontal,
 PanelLeftClose,
@@ -70,6 +71,35 @@ const handleSignOut = async () => {
 // scope: 'global' invalida la sesión en todos los dispositivos donde el usuario haya iniciado sesión, no solo en este navegador
 await createClient().auth.signOut({ scope: 'global' })
 window.location.href = '/login'
+}
+
+const [pwOpen, setPwOpen] = useState(false)
+const [pw, setPw] = useState({ current: '', next: '', confirm: '' })
+const [pwSaving, setPwSaving] = useState(false)
+const [pwError, setPwError] = useState<string | null>(null)
+const [pwDone, setPwDone] = useState(false)
+
+async function handleChangePassword(event: FormEvent) {
+event.preventDefault()
+setPwError(null)
+if (pw.next.length < 8) { setPwError('La nueva contraseña debe tener al menos 8 caracteres.'); return }
+if (pw.next !== pw.confirm) { setPwError('Las contraseñas nuevas no coinciden.'); return }
+if (pw.next === pw.current) { setPwError('La nueva contraseña debe ser distinta a la actual.'); return }
+setPwSaving(true)
+const sb = createClient()
+// Verifica la contraseña actual antes de cambiarla.
+const { error: authError } = await sb.auth.signInWithPassword({ email: accountEmail, password: pw.current })
+if (authError) { setPwError('La contraseña actual no es correcta.'); setPwSaving(false); return }
+const { error } = await sb.auth.updateUser({ password: pw.next })
+if (error) {
+setPwError(error.code === 'same_password' ? 'La nueva contraseña debe ser distinta a la actual.' : error.code === 'weak_password' ? 'La contraseña es demasiado débil. Probá con una más larga.' : 'No pudimos cambiar la contraseña. Probá de nuevo.')
+setPwSaving(false)
+return
+}
+setPwSaving(false)
+setPwOpen(false)
+setPw({ current: '', next: '', confirm: '' })
+setPwDone(true)
 }
 
 const [modalOpen, setModalOpen] = useState(false)
@@ -171,6 +201,14 @@ return <main className="app-shell">
 </div>
 </div>
 
+<div className="table-card" style={{ padding: 19, marginBottom: 16 }}>
+<div className="insight-head">
+<div><p className="eyebrow">Seguridad</p><h3>Contraseña</h3></div>
+<button className="button-outline" onClick={() => { setPw({ current: '', next: '', confirm: '' }); setPwError(null); setPwOpen(true) }}><KeyRound size={16} /> Cambiar contraseña</button>
+</div>
+{pwDone && <p className="form-success">Tu contraseña se cambió correctamente.</p>}
+</div>
+
 <div className="table-card" style={{ padding: 19 }}>
 <div className="insight-head">
 <div><p className="eyebrow">Equipo</p><h3>Personas con acceso</h3></div>
@@ -182,6 +220,36 @@ return <main className="app-shell">
 </div>
 </div>
 </section>
+
+{pwOpen && (
+<div className="modal-overlay" onClick={() => !pwSaving && setPwOpen(false)}>
+<div className="modal-card" onClick={(e) => e.stopPropagation()}>
+<div className="drawer-head">
+<div><h2>Cambiar contraseña</h2><p className="modal-subtitle">Ingresá tu contraseña actual y elegí una nueva.</p></div>
+<button className="icon-button" onClick={() => setPwOpen(false)} aria-label="Cerrar"><X size={18} /></button>
+</div>
+<form onSubmit={handleChangePassword}>
+<div className="form-field">
+<label htmlFor="pw-current">Contraseña actual</label>
+<input id="pw-current" type="password" required autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
+</div>
+<div className="form-field">
+<label htmlFor="pw-next">Nueva contraseña</label>
+<input id="pw-next" type="password" required minLength={8} autoComplete="new-password" placeholder="Mínimo 8 caracteres" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />
+</div>
+<div className="form-field">
+<label htmlFor="pw-confirm">Repetir nueva contraseña</label>
+<input id="pw-confirm" type="password" required minLength={8} autoComplete="new-password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} />
+</div>
+{pwError && <p className="form-error">{pwError}</p>}
+<div className="form-actions">
+<button type="button" className="button-outline" onClick={() => setPwOpen(false)} disabled={pwSaving}>Cancelar</button>
+<button type="submit" className="primary-button" disabled={pwSaving} style={{ justifyContent: 'center' }}>{pwSaving ? 'Guardando...' : 'Guardar contraseña'}</button>
+</div>
+</form>
+</div>
+</div>
+)}
 
 {modalOpen && (
 <div className="modal-overlay" onClick={() => !sending && setModalOpen(false)}>

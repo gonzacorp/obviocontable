@@ -5,8 +5,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName, getInitials } from '@/lib/account'
 import { esCuitValido, formatearCuit, tipoPersonaDesdeCuit, type TipoPersona } from '@/lib/cuit'
+import { IMPUESTOS, alternarImpuesto, normalizarImpuestos, puedePresentarAutonomo, type Impuesto } from '@/lib/impuestos'
 import {
 Archive,
+Pencil,
 Bell,
 CalendarDays,
 ChevronDown,
@@ -41,6 +43,7 @@ phone: string | null
 notes: string | null
 locality: string | null
 category: string | null
+taxes: Impuesto[] | null
 archived: boolean
 archived_at: string | null
 created_at: string
@@ -56,9 +59,10 @@ phone: string
 notes: string
 locality: string
 category: string
+taxes: Impuesto[]
 }
 
-const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '', locality: '', category: '' }
+const EMPTY_FORM: FormState = { name: '', cuit: '', owner: '', accountingOwner: '', email: '', phone: '', notes: '', locality: '', category: '', taxes: [] }
 
 const CATEGORIES = ['Agropecuarias', 'Comercial', 'Servicios', 'Industrial', 'Droguerías']
 const TONES = ['violet', 'gold', 'blue', 'pink', 'green', 'orange']
@@ -140,6 +144,7 @@ const [confirmingId, setConfirmingId] = useState<string | null>(null)
 const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
 
 const [modalOpen, setModalOpen] = useState(false)
+const [editingId, setEditingId] = useState<string | null>(null)
 const [form, setForm] = useState<FormState>(EMPTY_FORM)
 const [cuitTouched, setCuitTouched] = useState(false)
 const [creating, setCreating] = useState(false)
@@ -149,7 +154,27 @@ const cuitValido = useMemo(() => esCuitValido(form.cuit), [form.cuit])
 const personType = useMemo(() => tipoPersonaDesdeCuit(form.cuit), [form.cuit])
 
 function openModal() {
+setEditingId(null)
 setForm(EMPTY_FORM)
+setCuitTouched(false)
+setFormError(null)
+setModalOpen(true)
+}
+
+function openEdit(c: ClientRow) {
+setEditingId(c.id)
+setForm({
+name: c.name,
+cuit: c.cuit,
+owner: c.owner ?? '',
+accountingOwner: c.accounting_owner ?? '',
+email: c.email ?? '',
+phone: c.phone ?? '',
+notes: c.notes ?? '',
+locality: c.locality ?? '',
+category: c.category ?? '',
+taxes: normalizarImpuestos(c.taxes ?? [], c.cuit),
+})
 setCuitTouched(false)
 setFormError(null)
 setModalOpen(true)
@@ -183,7 +208,7 @@ return clients
 
 const activeCount = useMemo(() => clients.filter((c) => !c.archived).length, [clients])
 
-async function handleCreate(e: React.FormEvent) {
+async function handleSave(e: React.FormEvent) {
 e.preventDefault()
 setCuitTouched(true)
 if (!form.name.trim() || !esCuitValido(form.cuit)) {
@@ -194,9 +219,7 @@ setCreating(true)
 setFormError(null)
 const sb = createClient()
 const { data: userData } = await sb.auth.getUser()
-const { data, error } = await sb
-.from('clients')
-.insert({
+const payload = {
 name: form.name.trim(),
 cuit: form.cuit.trim(),
 owner: form.owner.trim(),
@@ -206,18 +229,20 @@ phone: form.phone.trim() || null,
 notes: form.notes.trim() || null,
 locality: form.locality.trim() || null,
 category: form.category || null,
-created_by: userData.user?.id ?? null,
-})
-.select()
-.single()
+taxes: normalizarImpuestos(form.taxes, form.cuit),
+}
+const { data, error } = editingId
+? await sb.from('clients').update(payload).eq('id', editingId).select().single()
+: await sb.from('clients').insert({ ...payload, created_by: userData.user?.id ?? null }).select().single()
 if (error) {
 setFormError(error.message)
 setCreating(false)
 return
 }
-setClients((prev) => [data as ClientRow, ...prev])
+setClients((prev) => editingId ? prev.map((c) => (c.id === editingId ? (data as ClientRow) : c)) : [data as ClientRow, ...prev])
 setCreating(false)
 setModalOpen(false)
+setEditingId(null)
 setForm(EMPTY_FORM)
 }
 
@@ -321,6 +346,7 @@ Ver archivados
 <th className="client-col">CLIENTE</th>
 <th>PROCESO</th>
 <th>CATEGORÍA</th>
+<th>IMPUESTOS</th>
 <th>LOCALIDAD</th>
 <th>CONTACTO</th>
 <th>A CARGO</th>
@@ -339,6 +365,7 @@ Ver archivados
 </td>
 <td><span className="type-pill" style={personaStyle(c.person_type)}>{personaLabel(c.person_type)}</span></td>
 <td>{c.category || <span className="drawer-muted">—</span>}</td>
+<td>{c.taxes && c.taxes.length > 0 ? <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{IMPUESTOS.filter((i) => c.taxes!.includes(i.key)).map((i) => <span key={i.key} className="type-pill" style={{ color: '#6b5fd0', background: '#eee9ff' }}>{i.short}</span>)}</span> : <span className="drawer-muted">—</span>}</td>
 <td>{c.locality || <span className="drawer-muted">—</span>}</td>
 <td>{c.email || c.phone ? <span>{c.email}{c.email && c.phone && <br />}{c.phone}</span> : <span className="drawer-muted">—</span>}</td>
 <td>
@@ -366,7 +393,10 @@ confirmingDeleteId === c.id ? (
 <button className="confirm-no" onClick={() => setConfirmingId(null)}>No</button>
 </span>
 ) : (
+<>
+<button className="link-muted" onClick={() => openEdit(c)}><Pencil size={13} /> Editar</button>
 <button className="link-danger" onClick={() => setConfirmingId(c.id)}><Archive size={13} /> Archivar</button>
+</>
 )}
 </div>
 </td>
@@ -391,17 +421,17 @@ confirmingDeleteId === c.id ? (
 <div className="modal-overlay" onClick={() => !creating && setModalOpen(false)}>
 <div className="modal-card" onClick={(e) => e.stopPropagation()}>
 <div className="drawer-head">
-<div><h2>Nuevo cliente</h2><p className="modal-subtitle">Cargá los datos básicos del cliente.</p></div>
+<div><h2>{editingId ? 'Editar cliente' : 'Nuevo cliente'}</h2><p className="modal-subtitle">{editingId ? 'Modificá los datos y los impuestos del cliente.' : 'Cargá los datos básicos del cliente.'}</p></div>
 <button className="icon-button" onClick={() => setModalOpen(false)} aria-label="Cerrar"><X size={18} /></button>
 </div>
-<form onSubmit={handleCreate}>
+<form onSubmit={handleSave}>
 <div className="form-field">
 <label htmlFor="client-name">Nombre / Razón social</label>
 <input id="client-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ej: Estudio Bianchi" />
 </div>
 <div className="form-field">
 <label htmlFor="client-cuit">CUIT</label>
-<input id="client-cuit" required value={form.cuit} onChange={(e) => setForm({ ...form, cuit: formatearCuit(e.target.value) })} onBlur={() => setCuitTouched(true)} placeholder="30-12345678-9" inputMode="numeric" />
+<input id="client-cuit" required value={form.cuit} onChange={(e) => { const cuit = formatearCuit(e.target.value); setForm({ ...form, cuit, taxes: normalizarImpuestos(form.taxes, cuit) }) }} onBlur={() => setCuitTouched(true)} placeholder="30-12345678-9" inputMode="numeric" />
 {cuitTouched && form.cuit.length > 0 && !cuitValido && <p className="form-error" style={{ marginTop: 6 }}>CUIT inválido. Revisá el número.</p>}
 {cuitValido && (
 <p className="drawer-muted" style={{ marginTop: 6, fontSize: 12 }}>
@@ -449,13 +479,29 @@ confirmingDeleteId === c.id ? (
 </div>
 )}
 <div className="form-field">
+<label>Impuestos que presenta</label>
+<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+{IMPUESTOS.map((imp) => {
+const bloqueado = imp.key === 'autonomo' && !puedePresentarAutonomo(form.cuit)
+return <label key={imp.key} className="archived-toggle" style={{ marginBottom: 0, opacity: bloqueado ? 0.5 : 1, fontWeight: 600 }}>
+<input type="checkbox" style={{ width: 'auto' }} disabled={bloqueado} checked={form.taxes.includes(imp.key)} onChange={() => setForm({ ...form, taxes: alternarImpuesto(form.taxes, imp.key, form.cuit) })} />
+{imp.label}
+</label>
+})}
+</div>
+<p className="drawer-muted" style={{ marginTop: 6, fontSize: 12 }}>
+IIBB y Convenio Multilateral son excluyentes: solo podés elegir uno.
+{!puedePresentarAutonomo(form.cuit) && ' Las empresas no pagan autónomos.'}
+</p>
+</div>
+<div className="form-field">
 <label htmlFor="client-notes">Notas (opcional)</label>
 <textarea id="client-notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Algo corto para tener de referencia" style={{ width: '100%', padding: '11px 12px', border: '1px solid #dedee8', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', resize: 'vertical' }} />
 </div>
 {formError && <p className="form-error">{formError}</p>}
 <div className="form-actions">
 <button type="button" className="button-outline" onClick={() => setModalOpen(false)} disabled={creating}>Cancelar</button>
-<button type="submit" className="primary-button" disabled={creating} style={{ justifyContent: 'center' }}>{creating ? 'Guardando...' : 'Crear cliente'}</button>
+<button type="submit" className="primary-button" disabled={creating} style={{ justifyContent: 'center' }}>{creating ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear cliente'}</button>
 </div>
 </form>
 </div>
