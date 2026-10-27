@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getDisplayName, getInitials } from '@/lib/account'
 import {
 Bell,
+CalendarClock,
 CalendarDays,
 ChevronDown,
 ChevronRight,
@@ -144,6 +145,7 @@ return <main className="app-shell">
 <p className="nav-caption">Workspace</p>
 <Link href="/" className="nav-item"><LayoutDashboard size={18} /><span>Resumen</span></Link>
 <button className="nav-item"><CalendarDays size={18} /><span>Presentaciones</span><span className="nav-badge">12</span></button>
+<Link href="/vencimientos" className="nav-item"><CalendarClock size={18} /><span>Vencimientos</span></Link>
 <Link href="/clientes" className="nav-item"><UsersRound size={18} /><span>Clientes</span></Link>
 <button className="nav-item"><Clock3 size={18} /><span>Actividad</span></button>
 <p className="nav-caption space-top">Análisis</p>

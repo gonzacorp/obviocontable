@@ -6,9 +6,10 @@ import { getDisplayName, getInitials } from '@/lib/account'
 import Link from 'next/link'
 import { tipoPersonaDesdeCuit, type TipoPersona } from '@/lib/cuit'
 import { IMPUESTOS, type Impuesto } from '@/lib/impuestos'
-import { fechaVencimiento } from '@/lib/vencimientos'
+import { calendarioDesdeFilas, calendarioErrepar, fechaVencimiento, type Calendario, type FilaVencimiento } from '@/lib/vencimientos'
 import {
 Bell,
+CalendarClock,
 CalendarDays,
 Check,
 ChevronDown,
@@ -65,9 +66,9 @@ return tipo === 'fisica' ? 'Persona física' : tipo === 'juridica' ? 'Empresa' :
 }
 
 // Celda de un impuesto para un cliente en el mes dado. Autónomo no aplica a empresas.
-function celda(client: Client, impuesto: Impuesto, year: number, month: number): { state: CellState; label: string } {
+function celda(calendario: Calendario, client: Client, impuesto: Impuesto, year: number, month: number): { state: CellState; label: string } {
 if (!client.taxes.includes(impuesto) || (impuesto === 'autonomo' && client.person_type === 'juridica')) return { state: 'muted', label: 'No aplica' }
-const fecha = fechaVencimiento(impuesto, client.cuit, year, month)
+const fecha = fechaVencimiento(calendario, impuesto, client.cuit, year, month)
 if (!fecha) return { state: 'pending', label: 'Sin fecha' }
 const hoy = new Date()
 hoy.setHours(0, 0, 0, 0)
@@ -103,6 +104,17 @@ else setClients((data ?? []).map((c) => ({ id: c.id, name: c.name, cuit: c.cuit,
 setLoading(false)
 })
 }, [])
+// Calendario de vencimientos del año elegido (se carga en la sección Vencimientos).
+// Si la tabla todavía no existe, se usa el calendario Errepar incluido en el código.
+const [calendario, setCalendario] = useState<Calendario>({})
+useEffect(() => {
+let cancelled = false
+createClient().from('tax_due_dates').select('year, month, tax, digit, day').eq('year', period.year).then(({ data, error }) => {
+if (cancelled) return
+setCalendario(error ? calendarioErrepar(period.year) : calendarioDesdeFilas((data ?? []) as FilaVencimiento[]))
+})
+return () => { cancelled = true }
+}, [period.year])
 function shiftMonth(delta: number) {
 setPeriod(({ year, month }) => { const d = new Date(year, month + delta, 1); return { year: d.getFullYear(), month: d.getMonth() } })
 }
@@ -141,6 +153,7 @@ return <main className="app-shell">
 <p className="nav-caption">Workspace</p>
 <Link href="/" className="nav-item active"><LayoutDashboard size={18} /><span>Resumen</span></Link>
 <button className="nav-item"><CalendarDays size={18} /><span>Presentaciones</span><span className="nav-badge">12</span></button>
+<Link href="/vencimientos" className="nav-item"><CalendarClock size={18} /><span>Vencimientos</span></Link>
 <Link href="/clientes" className="nav-item"><UsersRound size={18} /><span>Clientes</span></Link>
 <button className="nav-item"><Clock3 size={18} /><span>Actividad</span></button>
 <p className="nav-caption space-top">Análisis</p>
@@ -184,7 +197,7 @@ return <main className="app-shell">
 <div className="section-heading"><div><h2>Presentaciones de {MESES[period.month]}</h2><p>Seguimiento de obligaciones impositivas de tu cartera.</p></div><div className="month-control"><button className="icon-button" onClick={() => shiftMonth(-1)} aria-label="Mes anterior"><ChevronLeft size={16} /></button><strong>{MESES[period.month].charAt(0).toUpperCase() + MESES[period.month].slice(1)} {period.year}</strong><button className="icon-button" onClick={() => shiftMonth(1)} aria-label="Mes siguiente"><ChevronRight size={16} /></button></div></div>
 <div className="toolbar"><div className="search-box"><Search size={17} /><input placeholder="Buscar por cliente o CUIT..." value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="toolbar-actions"><button className="filter-button"><Filter size={16} /> Filtros <span>2</span></button><div className="select-wrap"><SlidersHorizontal size={16} /><select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filtrar responsable"><option>Todos</option>{owners.map((o) => <option key={o}>{o}</option>)}</select><ChevronDown size={15} /></div></div></div>
 <div className="legend"><span><i className="dot pending" /> Pendiente</span><span><i className="dot late" /> Vencido</span><span><i className="dot muted" /> No aplica</span></div>
-<div className="table-card"><div className="table-scroll"><table><thead><tr><th className="client-col">CLIENTE</th><th>TIPO</th><th>A CARGO</th>{IMPUESTOS.map((imp) => <th key={imp.key}>{imp.short}</th>)}<th aria-label="Acciones" /></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td className="client-cell"><button onClick={() => setSelected(client)} className="client-button"><Avatar client={client} /><span><strong>{client.name}</strong><small>{client.cuit}</small></span></button></td><td><span className="type-pill" style={client.person_type === 'fisica' ? { color: '#4b91b9', background: '#e4f4ff' } : client.person_type === 'juridica' ? { color: '#8e69d0', background: '#eee9ff' } : { color: '#be9342', background: '#fff3d3' }}>{personaLabel(client.person_type)}</span></td><td>{client.owner ? <span className="owner"><span className="owner-dot">{client.owner.split(' ').map((x) => x[0]).join('')}</span>{client.owner}</span> : <span className="drawer-muted">Sin asignar</span>}</td>{IMPUESTOS.map((imp) => { const task = celda(client, imp.key, period.year, period.month); return <td key={imp.key}><button className={`task-cell ${task.state}`} onClick={() => setSelected(client)} title={stateLabels[task.state]}>{task.label}</button></td> })}<td><button className="row-more" aria-label={`Más opciones para ${client.name}`}><MoreHorizontal size={17} /></button></td></tr>)}</tbody></table></div>{loadError && <p className="form-error">No se pudieron cargar los clientes: {loadError}</p>}{!loading && filtered.length === 0 && !loadError && <div className="empty-state"><h3>No hay clientes para mostrar</h3><p>Cargá clientes desde la sección Clientes.</p></div>}<div className="table-footer"><span>Mostrando <strong>{filtered.length}</strong> de <strong>{clients.length} clientes</strong></span></div></div>
+<div className="table-card"><div className="table-scroll"><table><thead><tr><th className="client-col">CLIENTE</th><th>TIPO</th><th>A CARGO</th>{IMPUESTOS.map((imp) => <th key={imp.key}>{imp.short}</th>)}<th aria-label="Acciones" /></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td className="client-cell"><button onClick={() => setSelected(client)} className="client-button"><Avatar client={client} /><span><strong>{client.name}</strong><small>{client.cuit}</small></span></button></td><td><span className="type-pill" style={client.person_type === 'fisica' ? { color: '#4b91b9', background: '#e4f4ff' } : client.person_type === 'juridica' ? { color: '#8e69d0', background: '#eee9ff' } : { color: '#be9342', background: '#fff3d3' }}>{personaLabel(client.person_type)}</span></td><td>{client.owner ? <span className="owner"><span className="owner-dot">{client.owner.split(' ').map((x) => x[0]).join('')}</span>{client.owner}</span> : <span className="drawer-muted">Sin asignar</span>}</td>{IMPUESTOS.map((imp) => { const task = celda(calendario, client, imp.key, period.year, period.month); return <td key={imp.key}><button className={`task-cell ${task.state}`} onClick={() => setSelected(client)} title={stateLabels[task.state]}>{task.label}</button></td> })}<td><button className="row-more" aria-label={`Más opciones para ${client.name}`}><MoreHorizontal size={17} /></button></td></tr>)}</tbody></table></div>{loadError && <p className="form-error">No se pudieron cargar los clientes: {loadError}</p>}{!loading && filtered.length === 0 && !loadError && <div className="empty-state"><h3>No hay clientes para mostrar</h3><p>Cargá clientes desde la sección Clientes.</p></div>}<div className="table-footer"><span>Mostrando <strong>{filtered.length}</strong> de <strong>{clients.length} clientes</strong></span></div></div>
 <div className="bottom-grid"><div className="insight-card"><div className="insight-head"><div><p className="eyebrow">Rendimiento del equipo</p><h3>Actividad semanal</h3></div><button className="small-select">Esta semana <ChevronDown size={14} /></button></div><div className="chart-area"><div className="chart-labels"><span>40</span><span>30</span><span>20</span><span>10</span><span>0</span></div><div className="chart"><div className="grid-line one" /><div className="grid-line two" /><div className="grid-line three" /><div className="grid-line four" /><svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-label="Gráfico de actividad semanal"><path d="M8 116 C52 90, 74 105, 110 90 S170 68, 205 90 S260 110, 300 76 S352 48, 390 69 S435 94, 470 57 S535 40, 592 20 L592 150 L8 150 Z" fill="url(#chartFill)" /><path d="M8 116 C52 90, 74 105, 110 90 S170 68, 205 90 S260 110, 300 76 S352 48, 390 69 S435 94, 470 57 S535 40, 592 20" fill="none" stroke="#9d8cff" strokeWidth="3" strokeLinecap="round" /><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#b9adff" stopOpacity=".3" /><stop offset="1" stopColor="#b9adff" stopOpacity="0" /></linearGradient></defs></svg><div className="chart-days"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span></div></div></div></div><div className="overdue-card"><div className="insight-head"><div><p className="eyebrow">Atención requerida</p><h3>Próximos vencimientos</h3></div><button className="arrow-link">Ver todos <ChevronRight size={14} /></button></div><div className="overdue-list"><div><span className="date-badge red">18<span>SEP</span></span><p><strong>IVA</strong><small>Comercial Norte S.A.</small></p><span className="risk high">En 2 días</span></div><div><span className="date-badge yellow">19<span>SEP</span></span><p><strong>IIBB</strong><small>Estancia La Aurora</small></p><span className="risk medium">En 3 días</span></div><div><span className="date-badge purple">21<span>SEP</span></span><p><strong>IVA</strong><small>Grupo Horizonte</small></p><span className="risk low">En 5 días</span></div></div></div></div>
 </div>
 </section>
